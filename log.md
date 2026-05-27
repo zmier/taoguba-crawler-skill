@@ -274,3 +274,172 @@
 
 ### Reflection
 - TASK06 sample 阶段已完成。下一阶段应先设计 incremental 的新增判定和停止条件，仍不进入 full 全量抓取。
+
+## 2026-05-27 12:43 - TASK06 sample 有评论帖子补验收
+
+### Observation
+- 用户认可 sample 阶段基本通过，但指出真实 sample 没有抓到有评论的帖子。
+- 当前 live sample 的 `comments` 表为 0，评论链路仅由 fixture e2e/UAT 覆盖。
+- 需要按发帖时间排序，抓当前列表页最早的 5 个帖子，观察真实评论入库情况。
+
+### Plan
+- 使用当前登录 Cookie 请求 `https://www.tgb.cn/bbs/1/1`。
+- 用 `parse_bbs_list()` 解析列表，按 `post_time` 升序选择最早 5 个帖子。
+- 写入单独验证库 `data/tgb-sample-earliest.sqlite`，避免污染原 sample 库。
+- 抓取 5 篇详情和评论第一页，统计 `articles`、`comments`、`failures`。
+
+### Action
+- 准备执行 live 补验收脚本。
+
+### Result
+- 按当前列表页 `post_time` 升序抓最早 5 篇，生成 `data/tgb-sample-earliest.sqlite`。
+- 这 5 篇列表 `reply_count` 均为 0，因此真实评论入库仍为 0；详情抓取和正文入库正常，无 failures。
+- 随后在同一列表页筛选 `reply_count > 0` 的帖子，再按 `post_time` 升序抓取，生成 `data/tgb-sample-comments.sqlite`。
+- 当前页只有 2 篇 `reply_count > 0` 的候选，已全部抓取；`comments` 表成功写入 4 条评论，无 failures。
+- 已抽查评论字段：reply_id、username、is_author、floor_label、created_at、text 均能入库。
+
+### Reflection
+- live 评论入库已补验收通过。后续 incremental 阶段应把“按 reply_count 目标抽样”作为 UAT 用例之一，避免随机 sample 抽不到评论。
+
+## 2026-05-27 12:58 - TASK06 incremental 设计落档
+
+### Observation
+- 用户确认进入 incremental 设计阶段，并询问是否需要新建项目管理文档以及拆成几个 TASK。
+- 当前 `PROJECT-MANAGEMENT.md` 已是总控文档，不宜另起一套总项目管理文档。
+- TASK06 已承载 sample/incremental/full 三种运行模式，适合在 TASK06 内新增细分设计文档。
+
+### Plan
+- 继续使用 `PROJECT-MANAGEMENT.md` 作为总控文档。
+- 在 `tasks/TASK06-full-run/` 下新增 `incremental-design.md`。
+- 将 incremental 拆成 5 个子任务：TASK06A 总页数与分页边界、TASK06B 新帖发现、TASK06C 停止条件、TASK06D 近期评论复查、TASK06E 命令与验收。
+- 更新 TASK06 说明文档和总控文档。
+
+### Action
+- 准备写入 incremental 设计文档和文档索引。
+
+### Result
+- 已新增 `tasks/TASK06-full-run/incremental-design.md`。
+- 已将 incremental 拆成 5 个子任务：TASK06A 总页数与分页边界、TASK06B 新帖发现、TASK06C 停止条件、TASK06D 近期评论复查、TASK06E 命令与验收。
+- 已更新 `tasks/TASK06-full-run/TASK06-说明.md`，将 incremental 标记为设计中。
+- 已更新 `PROJECT-MANAGEMENT.md`，把 TASK06 状态更新为 sample 完成、incremental 设计中，并写入 TASK06A-TASK06E。
+
+### Reflection
+- incremental 设计已落档。下一步若继续实现，应从 TASK06A 的 Red 测试开始。
+
+## 2026-05-27 13:07 - TASK06A-E Red 准备
+
+### Observation
+- 用户要求持续推进直到 TASK06E 完成。
+- 列表页 fixture 中存在 `gotoPage(92715,1,92715)` 和跳转页码上限，可用于解析总页数。
+- 当前已有 sample runner，但还没有 incremental pagination、stop policy、增量 runner、评论复查和命令入口。
+
+### Plan
+- TASK06A：为分页解析写单测，期待 `parse_bbs_pagination()` 和 `build_bbs_page_url()`。
+- TASK06B/C/D：为 incremental runner、停止条件、评论复查写单元/e2e 测试。
+- TASK06E：为 UAT 摘要和 Makefile/CLI 入口写验收测试。
+- 先让测试 Red，再实现最小代码让测试 Green，最后回归和文档回填。
+
+### Action
+- 准备新增 TASK06A-E 的测试。
+
+### Result
+- Red：新增分页、incremental policy、incremental e2e、incremental UAT 测试后，因 `build_bbs_page_url`、`parse_bbs_pagination` 和 `common.tgb_incremental` 不存在而失败，符合预期。
+- Green：新增 `common.tgb_index` 分页函数、`common/tgb_incremental.py`、`scripts/tgb_incremental.py` 和 `make crawl-incremental` 后，新增 9 个 TASK06A-E 测试通过。
+- TASK06A：完成列表总页数与分页边界解析。
+- TASK06B：完成增量新帖发现与详情入队。
+- TASK06C：完成停止条件策略。
+- TASK06D：完成近期评论复查候选选择与 runner 复查步骤。
+- TASK06E：完成 incremental 命令入口、Makefile target 和 UAT 摘要。
+- 已更新 `PROJECT-MANAGEMENT.md`、`tasks/TASK06-full-run/TASK06-说明.md`、`tasks/TASK06-full-run/incremental-design.md` 和 `README.md`。
+
+### Reflection
+- incremental MVP 已完成；下一阶段才考虑 full/backfill 倒序历史回填。
+
+## 2026-05-27 13:20 - 最老页最老 5 条 sample 验证
+
+### Observation
+- 用户希望抓当前最老页的最老 5 条帖子作为 sample 查看。
+- incremental 已能解析 `total_pages`，因此可以自动定位 `/bbs/{total_pages}/1`。
+- 这仍是 sample 验证，不启动 full 全量抓取。
+
+### Plan
+- 请求 `/bbs/1/1`，解析当前 `total_pages`。
+- 请求 `/bbs/{total_pages}/1`，解析最后一页列表。
+- 选取最后一页最后 5 条帖子。
+- 抓取这 5 篇详情和评论第一页，写入 `data/tgb-sample-oldest.sqlite`。
+- 汇总正文长度、评论数、失败数和链接。
+
+### Action
+- 准备执行 live 最老页 sample 脚本。
+
+### Result
+- 当前解析到 `total_pages = 92760`，最后页 URL 为 `https://www.tgb.cn/bbs/92760/1`。
+- 最后一页可解析 8 条列表记录。
+- 已取最后 5 条帖子抓取详情与评论第一页，写入 `data/tgb-sample-oldest.sqlite`。
+- 本次 `articles_total = 8`，`comments_total = 84`，`failures = 0`。
+- 5 篇详情均抓到正文，正文长度分别为 473、1597、629、141、335。
+- 5 篇评论分别入库 5、7、14、9、49 条。最后一篇列表回复数为 137，但仅抓第一页评论，后续 full/backfill 需要补评论分页。
+
+### Reflection
+- 老页面详情和评论结构与当前 parser 基本兼容。评论分页是 full/backfill 的关键风险点：只抓第一页会漏掉多页评论。
+
+## 2026-05-27 13:32 - TASK07A-E full/backfill Red 准备
+
+### Observation
+- 用户要求推进到 TASK07E 完成。
+- sample 与 incremental MVP 已完成，但 full/backfill 尚未设计和实现。
+- 老页 sample 暴露关键风险：多页评论未补全，例如回复数 137 但第一页只入库 49 条。
+
+### Plan
+- TASK07A：新增 full/backfill 设计文档和任务说明。
+- TASK07B：实现评论分页规划与抓取补全，先写单元/e2e 测试。
+- TASK07C：实现倒序列表页规划，从 `total_pages` 往前抓。
+- TASK07D：提供 backfill sample runner 和命令入口。
+- TASK07E：补 UAT 摘要和运行闸门，确保仍不是长期 full 全量运行。
+
+### Action
+- 准备新增 TASK07 测试和文档骨架。
+
+### Result
+- Red：新增 `tests.unit.test_backfill_policy`、`tests.e2e.test_backfill_runner`、`tests.uat.test_backfill_acceptance` 后，因 `common.tgb_backfill` 不存在失败，符合预期。
+- Green：新增 `common/tgb_backfill.py`、`scripts/tgb_backfill_sample.py` 和 `make crawl-backfill-sample` 后，backfill 5 个测试通过。
+- TASK07A：完成 `tasks/TASK07-backfill-full/backfill-design.md` 和 `TASK07-说明.md`。
+- TASK07B：完成评论分页规划与抓取，sample 可抓第 1、2 页评论。
+- TASK07C：完成从 `total_pages` 倒序规划列表页。
+- TASK07D：完成 backfill sample 命令入口。
+- TASK07E：完成 UAT 摘要和 `manual_approval_required` full 运行闸门。
+- 完整回归：`make test` 通过，29 个测试全部通过。
+- 编译检查：关键 `common/` 与 `scripts/` 文件均通过 `py_compile`。
+- live backfill smoke：`scripts/tgb_backfill_sample.py --max-list-pages 1 --max-articles-per-page 1 --max-comment-pages 2` 成功；解析 `total_pages = 92762`，倒序抓 1 个最后页、1 篇详情、2 个评论页，入库评论 92 条，`failures = 0`，`full_run = false`。
+
+### Reflection
+- TASK07E 已完成，但长期 full 全量仍未启动。下一步需要人工审核 backfill sample 输出后，再决定是否设计长期 full 参数。
+
+## 2026-05-27 13:48 - TASK08/09 Red 准备
+
+### Observation
+- 用户要求把 TASK08/09/10 全流程写入项目管理文件，并持续推进完 TASK08 和 TASK09。
+- 当前已有 backfill sample，但还没有长期 full 参数定稿、队列化 full trial、中断恢复演练和试运行报告。
+- TASK10 才是完整版长期 full，本阶段不能越过人工闸门。
+
+### Plan
+- 更新项目管理文件，补 TASK08、TASK09、TASK10 路线。
+- TASK08：新增 full 参数、校验、队列规划、运行前闸门的测试与实现。
+- TASK09：新增受控 full trial runner、CLI、Makefile target、UAT 摘要。
+- 执行完整回归和轻量 live smoke。
+
+### Action
+- 准备新增 TASK08/09 测试。
+
+### Result
+- Red：新增 `tests.unit.test_full_policy`、`tests.e2e.test_full_trial_runner`、`tests.uat.test_full_trial_acceptance` 后，因 `common.tgb_full` 不存在失败，符合预期。
+- Green：新增 `common/tgb_full.py`、`scripts/tgb_full_trial.py` 和 `make crawl-full-trial` 后，TASK08/09 6 个测试通过。
+- TASK08：完成 full 参数模型、校验、队列规划、运行报告与人工闸门。
+- TASK09：完成受控 full trial runner、CLI、Makefile target、e2e/UAT。
+- 已更新 `PROJECT-MANAGEMENT.md`、`README.md`、`tasks/TASK08-full-preflight/`、`tasks/TASK09-full-trial/`、`tasks/TASK10-full-production/`。
+- 完整回归：`make test` 通过，35 个测试全部通过。
+- 编译检查：关键 `common/` 与 `scripts/` 文件均通过 `py_compile`。
+- live full trial smoke：`scripts/tgb_full_trial.py --max-list-pages 1 --max-articles-per-page 1 --max-comment-pages 2` 成功；解析 `total_pages = 92763`，倒序入队 1 个列表页、1 篇详情、2 个评论页，`queue_done = 4`，`failures = 0`，`full_run = false`，`full_run_gate = manual_approval_required`。
+
+### Reflection
+- TASK08/09 已完成；TASK10 才是长期 full production，仍需用户手动确认。

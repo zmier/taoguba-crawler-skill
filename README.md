@@ -68,6 +68,30 @@ make crawl-sample
 
 该命令只抓少量列表页、少量详情页和评论第一页，写入 `data/tgb-sample.sqlite`，用于验证小样本闭环；它不是 full 全量抓取。
 
+TASK06 incremental 增量模式：
+
+```bash
+make crawl-incremental
+```
+
+该命令从最新列表页开始扫描少量页，发现新帖、抓取详情，并复查近期评论变化；它仍然不是 full 全量抓取。
+
+TASK07 backfill sample：
+
+```bash
+make crawl-backfill-sample
+```
+
+该命令从当前最后页开始倒序抓少量历史页面，并按上限补评论分页；它仍然不是长期 full 全量抓取。
+
+TASK09 受控 full trial：
+
+```bash
+make crawl-full-trial
+```
+
+该命令使用 list/article/comment_page 队列做小范围 full 试运行；它仍然带有 `manual_approval_required` 闸门，不是 TASK10 长期 full。
+
 主进程：
 
 ```bash
@@ -89,6 +113,9 @@ python main.py testsend-live
 ## 输出
 
 - `data/tgb-sample.sqlite`: TASK06 sample 小闭环数据库
+- `data/tgb-incremental.sqlite`: TASK06 incremental 增量数据库
+- `data/tgb-backfill-sample.sqlite`: TASK07 backfill sample 数据库
+- `data/tgb-full-trial.sqlite`: TASK09 受控 full trial 数据库
 - `output/`: 爬虫生成的 JSON、HTML，以及最终发送给渠道的 Markdown
 - `output/latest_report.md`: 最近一次发送用的 Markdown
 - `output/report-YYYYMMDD-HHMMSS.md`: 按时间归档的发送内容

@@ -62,6 +62,10 @@ tgb/
     TASK04-storage/
     TASK05-resume-and-retry/
     TASK06-full-run/
+    TASK07-backfill-full/
+    TASK08-full-preflight/
+    TASK09-full-trial/
+    TASK10-full-production/
   data/
     tgb.sqlite
   output/
@@ -112,6 +116,10 @@ tasks/TASKxx-name/
 | TASK04 | SQLite 存储 | schema、upsert、查询接口 | TASK01 字段定义 | 可与 TASK02/TASK03 并行 |
 | TASK05 | 断点续爬与重试 | 队列状态、失败重试、限速策略 | TASK01-04 | 不建议提前并行 |
 | TASK06 | 运行模式与验收 | sample/incremental/full 命令、UAT 报告 | TASK01-05 | 不建议提前并行 |
+| TASK07 | full/backfill 倒序历史回填 | backfill sample、评论分页补全、full 运行闸门 | TASK01-06 | 不建议提前并行 |
+| TASK08 | full 运行前审计与参数定稿 | full 参数、队列规划、运行报告、人工闸门 | TASK07 | 不建议提前并行 |
+| TASK09 | 受控 full 试运行 | 小范围真实试跑、恢复能力与质量报告 | TASK08 | 不建议提前并行 |
+| TASK10 | 长期 full/backfill 正式运行 | 按批准参数长期倒序全量运行 | TASK09 + 用户确认 | 不可自动进入 |
 
 ### 4.1.1 当前进度
 
@@ -122,7 +130,11 @@ tasks/TASKxx-name/
 | TASK03 | MVP 完成 | `common/tgb_comment.py`、评论解析单测、评论分页 URL 规则 |
 | TASK04 | MVP 完成 | `common/tgb_storage.py`、SQLite schema、结构化 upsert 单测 |
 | TASK05 | MVP 完成 | `common/tgb_resume.py`、可恢复队列、失败重试与退避单测 |
-| TASK06 | sample 完成 | `common/tgb_sample.py`、`scripts/tgb_sample.py`、sample e2e/UAT、`Makefile` |
+| TASK06 | sample 完成，incremental MVP 完成 | `common/tgb_sample.py`、`scripts/tgb_sample.py`、`common/tgb_incremental.py`、`scripts/tgb_incremental.py`、sample/incremental e2e/UAT、`Makefile` |
+| TASK07 | backfill sample 完成，full 未启动 | `common/tgb_backfill.py`、`scripts/tgb_backfill_sample.py`、backfill e2e/UAT、`make crawl-backfill-sample` |
+| TASK08 | 已完成 | `FullRunConfig`、full 参数校验、队列规划、运行报告闸门 |
+| TASK09 | 已完成 | `common/tgb_full.py`、`scripts/tgb_full_trial.py`、`make crawl-full-trial`、full trial e2e/UAT |
+| TASK10 | 未开始 | 等待 TASK09 审核和用户手动确认 |
 
 ### 4.2 依赖关系
 
@@ -133,6 +145,10 @@ TASK01 全量帖子索引
   └── TASK04 SQLite 存储
         └── TASK05 断点续爬与重试
               └── TASK06 运行模式与验收
+                    └── TASK07 full/backfill 倒序历史回填
+                          └── TASK08 full 运行前审计
+                                └── TASK09 受控 full 试运行
+                                      └── TASK10 长期 full 正式运行
 ```
 
 更准确地说：
@@ -143,6 +159,9 @@ TASK01 全量帖子索引
 - TASK04 只依赖字段设计，不强依赖真实爬取完成，因此可以和 TASK02/TASK03 并行。
 - TASK05 必须等索引、详情、评论、存储的基本接口稳定后再做，否则队列状态会反复改。
 - TASK06 是验收层，应该在前五项能跑通后再做。
+- TASK07 依赖 TASK06 的分页解析、运行摘要与命令体系；先做 backfill sample，不直接 full。
+- TASK08/TASK09 是进入长期 full 前的安全层。
+- TASK10 才是完整版长期 full，必须由用户手动确认。
 
 ### 4.3 推荐执行批次
 
@@ -300,8 +319,28 @@ TASK01 全量帖子索引
 当前进度：
 
 - `sample`：已完成。支持 fixture e2e/UAT 和真实小样本命令。
-- `incremental`：未开始。
+- `incremental`：MVP 已完成。拆为 TASK06A-TASK06E。
 - `full`：未开始。
+
+incremental 子任务：
+
+| 子任务 | 名称 | 目标 |
+| --- | --- | --- |
+| TASK06A | 列表总页数与分页边界 | 解析 `total_pages`，确认 `/bbs/1/1` 最新、`/bbs/{total}/1` 最老 |
+| TASK06B | 增量新帖发现 | 从最新列表页扫描少量页，新增帖子入库并入队详情 |
+| TASK06C | 停止条件 | 连续已知帖子、连续无新增页或页数上限触发停止 |
+| TASK06D | 近期评论复查 | 对 reply_count 变化、近期帖子、未完成评论页进行复查 |
+| TASK06E | incremental 命令与验收 | 提供 `make crawl-incremental` 和 e2e/UAT 验收摘要 |
+
+incremental 已完成产物：
+
+- `common/tgb_index.parse_bbs_pagination()`：解析列表总页数和分页边界。
+- `common/tgb_incremental.run_incremental()`：增量扫描、新帖入队、详情抓取、评论复查。
+- `scripts/tgb_incremental.py`：命令行入口。
+- `make crawl-incremental`：固定运行命令。
+- `tests/unit/test_incremental_policy.py`：停止条件与评论复查候选测试。
+- `tests/e2e/test_incremental_runner.py`：fixture 小闭环 e2e。
+- `tests/uat/test_incremental_acceptance.py`：验收摘要测试。
 
 ## 5. TDD-BDD 开发约定
 
@@ -426,10 +465,10 @@ make crawl-full
 推荐执行顺序：
 
 ```text
-单元稳定 -> sample 小闭环 -> incremental 增量 -> full 全量长期运行
+单元稳定 -> sample 小闭环 -> incremental 增量 -> backfill sample -> full preflight -> full trial -> full production
 ```
 
-当前 `sample 小闭环` 已完成，下一步才考虑 `incremental` 增量模式。
+当前 `sample 小闭环`、`incremental MVP`、`backfill sample`、`full preflight` 与 `full trial` 已完成，但长期 full production 仍未启动。
 
 ## 9. 风险与约束
 
@@ -453,7 +492,7 @@ make crawl-full
 
 推荐下一步：
 
-1. 进入 TASK06 的 `incremental` 设计。
-2. 明确每日新增判定规则、列表页停止条件和已抓帖子复查策略。
-3. 增加 incremental 的 integration/e2e/UAT 测试。
-4. `incremental` 通过前，不进入 `full` 全量抓取。
+1. 审核 TASK09 full trial 输出。
+2. 确认 TASK10 长期运行参数：页码范围、限速、评论页上限、失败重试审计。
+3. 做或复核中断恢复演练。
+4. 用户手动确认前，不启动 TASK10 长期 full 全量抓取。

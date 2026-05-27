@@ -28,6 +28,7 @@ class TestResumeQueue(unittest.TestCase):
             item = get_queue_item(conn, "https://www.tgb.cn/a/abc123")
             self.assertEqual(item["status"], "pending")
             self.assertEqual(item["priority"], 10)
+            conn.close()
 
     def test_claim_next_marks_task_running(self):
         # GIVEN：两个不同优先级的待抓取任务
@@ -44,6 +45,7 @@ class TestResumeQueue(unittest.TestCase):
             self.assertEqual(task["url"], "https://www.tgb.cn/a/high")
             stored = get_queue_item(conn, "https://www.tgb.cn/a/high")
             self.assertEqual(stored["status"], "running")
+            conn.close()
 
     def test_mark_done_finishes_running_task(self):
         # GIVEN：一条已领取的任务
@@ -60,6 +62,7 @@ class TestResumeQueue(unittest.TestCase):
             item = get_queue_item(conn, "https://www.tgb.cn/a/abc123")
             self.assertEqual(item["status"], "done")
             self.assertEqual(item["last_error"], "")
+            conn.close()
 
     def test_mark_failed_retries_then_marks_failed(self):
         # GIVEN：一条运行中任务，最多允许两次失败
@@ -102,6 +105,7 @@ class TestResumeQueue(unittest.TestCase):
             self.assertEqual(item["status"], "failed")
             self.assertEqual(item["attempts"], 2)
             self.assertEqual(count_rows(conn, "failures"), 2)
+            conn.close()
 
     def test_reset_stale_running_moves_old_tasks_back_to_pending(self):
         # GIVEN：一条长时间卡在 running 的任务
@@ -123,6 +127,7 @@ class TestResumeQueue(unittest.TestCase):
             self.assertEqual(reset_count, 1)
             item = get_queue_item(conn, url)
             self.assertEqual(item["status"], "pending")
+            conn.close()
 
 
 if __name__ == "__main__":

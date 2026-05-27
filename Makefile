@@ -1,6 +1,6 @@
 PYTHON ?= ../../.venv/bin/python
 
-.PHONY: test test-unit test-e2e test-uat crawl-sample
+.PHONY: test test-unit test-e2e test-uat crawl-sample crawl-incremental crawl-backfill-sample crawl-full-trial
 
 test:
 	$(PYTHON) -m unittest discover tests
@@ -16,3 +16,12 @@ test-uat:
 
 crawl-sample:
 	$(PYTHON) scripts/tgb_sample.py --list-pages 1 --max-articles 3 --comment-pages 1
+
+crawl-incremental:
+	$(PYTHON) scripts/tgb_incremental.py --max-pages 5 --max-articles 20 --max-refresh-articles 20 --comment-pages 1
+
+crawl-backfill-sample:
+	$(PYTHON) scripts/tgb_backfill_sample.py --max-list-pages 2 --max-articles-per-page 3 --max-comment-pages 2
+
+crawl-full-trial:
+	$(PYTHON) scripts/tgb_full_trial.py --max-list-pages 10 --max-articles-per-page 20 --max-comment-pages 5

@@ -36,6 +36,7 @@ class TestTgbStorage(unittest.TestCase):
             self.assertIn("comments", table_names)
             self.assertIn("crawl_queue", table_names)
             self.assertIn("failures", table_names)
+            conn.close()
 
     def test_upsert_index_records_is_idempotent(self):
         # GIVEN：一条帖子列表索引记录
@@ -66,6 +67,7 @@ class TestTgbStorage(unittest.TestCase):
             self.assertEqual(article["title"], "测试标题")
             self.assertEqual(article["reply_count"], 3)
             self.assertEqual(article["source_page"], 1)
+            conn.close()
 
     def test_upsert_article_detail_enriches_existing_article(self):
         # GIVEN：一条已由列表页发现的帖子和对应详情记录
@@ -115,6 +117,7 @@ class TestTgbStorage(unittest.TestCase):
             self.assertEqual(article["topic_id"], "1001")
             self.assertEqual(article["comment_count"], 8)
             self.assertEqual(article["image_urls_json"], '["https://image.tgb.cn/a.png"]')
+            conn.close()
 
     def test_upsert_comments_is_idempotent(self):
         # GIVEN：两条属于同一帖子的评论记录
@@ -163,6 +166,7 @@ class TestTgbStorage(unittest.TestCase):
             self.assertEqual(row["username"], "用户2")
             self.assertEqual(row["is_author"], 1)
             self.assertEqual(row["image_urls_json"], '["https://image.tgb.cn/b.png"]')
+            conn.close()
 
 
 if __name__ == "__main__":

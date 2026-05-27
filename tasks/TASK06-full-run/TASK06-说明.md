@@ -23,7 +23,7 @@
 ## 当前状态
 
 - sample 阶段：已完成。
-- incremental 阶段：未开始。
+- incremental 阶段：已完成 MVP。
 - full 阶段：未开始。
 
 ## sample 阶段范围
@@ -64,3 +64,43 @@ make crawl-sample
 - `list_pages_fetched`、`article_details_fetched`、`comment_pages_fetched`、`comments_saved` 必须有明确计数。
 - 数据库文件必须生成。
 - sample 通过前不进入 full 全量抓取。
+
+## incremental 阶段设计
+
+设计文档：
+
+- `tasks/TASK06-full-run/incremental-design.md`
+
+incremental 拆成 5 个子 TASK：
+
+| 子任务 | 名称 | 状态 |
+| --- | --- | --- |
+| TASK06A | 列表总页数与分页边界 | 已完成 |
+| TASK06B | 增量新帖发现 | 已完成 |
+| TASK06C | 停止条件 | 已完成 |
+| TASK06D | 近期评论复查 | 已完成 |
+| TASK06E | incremental 命令与验收 | 已完成 |
+
+当前 incremental 已完成 MVP，不启动 full 全量抓取。
+
+## incremental 运行命令
+
+```bash
+make crawl-incremental
+```
+
+或直接运行：
+
+```bash
+../../.venv/bin/python scripts/tgb_incremental.py --max-pages 5 --max-articles 20 --max-refresh-articles 20 --comment-pages 1
+```
+
+## incremental 验收标准
+
+- `mode` 必须为 `incremental`。
+- `full_run` 必须为 `false`。
+- 摘要包含 `total_pages`、`new_articles`、`updated_articles`、`comment_refresh_candidates`、`queue_done`、`stop_reason`。
+- 能发现新帖并入队详情。
+- 能根据停止条件结束扫描。
+- 能选出 `reply_count > comments_count` 的评论复查候选。
+- incremental 通过前不进入 full；当前已通过 MVP 测试，但 full 仍需单独设计。

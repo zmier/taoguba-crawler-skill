@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from common.tgb_index import parse_bbs_list
+from common.tgb_index import build_bbs_page_url, parse_bbs_list, parse_bbs_pagination
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -43,6 +43,32 @@ class TestBbsIndexParser(unittest.TestCase):
         self.assertEqual(article["title"], first.title)
         self.assertEqual(article["url"], first.url)
         self.assertEqual(article["href"], f"a/{first.slug}")
+
+    def test_parse_bbs_pagination_extracts_page_boundaries(self):
+        # GIVEN：一份包含论坛分页控件的列表页 HTML fixture
+        html = (FIXTURES / "bbs_list_page_1.html").read_text(encoding="utf-8")
+
+        # WHEN：解析分页信息
+        pagination = parse_bbs_pagination(html, source_url="https://www.tgb.cn/bbs/1/1")
+
+        # THEN：应得到当前页、总页数、最新页 URL 和最后页 URL
+        self.assertEqual(pagination.current_page, 1)
+        self.assertGreaterEqual(pagination.total_pages, 90000)
+        self.assertEqual(pagination.latest_url, "https://www.tgb.cn/bbs/1/1")
+        self.assertEqual(
+            pagination.last_url,
+            f"https://www.tgb.cn/bbs/{pagination.total_pages}/1",
+        )
+
+    def test_build_bbs_page_url(self):
+        # GIVEN：论坛页码与分类标记
+        page_no = 92757
+
+        # WHEN：构造列表页 URL
+        url = build_bbs_page_url(page_no, flag=1)
+
+        # THEN：应得到淘股吧论坛分页 URL
+        self.assertEqual(url, "https://www.tgb.cn/bbs/92757/1")
 
 
 if __name__ == "__main__":

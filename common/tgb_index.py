@@ -32,6 +32,36 @@ class BbsIndexRecord:
         }
 
 
+@dataclass(frozen=True)
+class BbsPagination:
+    current_page: int
+    total_pages: int
+    flag: int
+    latest_url: str
+    last_url: str
+
+
+def build_bbs_page_url(page_no: int, flag: int = 1) -> str:
+    return f"{BASE_URL}/bbs/{page_no}/{flag}"
+
+
+def parse_bbs_pagination(html: str, source_url: str = "") -> BbsPagination:
+    current_page = _source_page_from_url(source_url) or 1
+    flag = _source_flag_from_url(source_url) or 1
+    candidates = [int(value) for value in re.findall(r"gotoPage\(\s*\d+\s*,\s*\d+\s*,\s*(\d+)\s*\)", html)]
+    candidates.extend(int(value) for value in re.findall(r"pageNo\s*>\s*(\d+)", html))
+    candidates.extend(int(value) for value in re.findall(r"pageNo\s*>\s*(\d+)", html))
+    candidates.extend(int(value) for value in re.findall(r"pageNo\s*<\s*1\s*\|\|\s*pageNo\s*>\s*(\d+)", html))
+    total_pages = max(candidates) if candidates else current_page
+    return BbsPagination(
+        current_page=current_page,
+        total_pages=total_pages,
+        flag=flag,
+        latest_url=build_bbs_page_url(1, flag),
+        last_url=build_bbs_page_url(total_pages, flag),
+    )
+
+
 def parse_bbs_list(html: str, source_url: str = "", source_page: int = 0) -> list[BbsIndexRecord]:
     soup = BeautifulSoup(html, "html.parser")
     records: list[BbsIndexRecord] = []
@@ -109,6 +139,16 @@ def _extract_slug(href: str) -> str:
 def _extract_author_id(href: str) -> str:
     match = re.search(r"/?blog/(\d+)", href)
     return match.group(1) if match else ""
+
+
+def _source_page_from_url(url: str) -> int:
+    match = re.search(r"/bbs/(\d+)/", url)
+    return int(match.group(1)) if match else 0
+
+
+def _source_flag_from_url(url: str) -> int:
+    match = re.search(r"/bbs/\d+/(\d+)", url)
+    return int(match.group(1)) if match else 0
 
 
 def _clean_title(value: str) -> str:
