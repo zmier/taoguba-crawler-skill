@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 from io import BytesIO
 from urllib.parse import urljoin
 
+from common.tgb_article import parse_article_detail
+from common.tgb_comment import parse_comments
+from common.tgb_index import parse_bbs_list
+
 # 加载环境变量
 load_dotenv()
 
@@ -41,33 +45,13 @@ def crawl_articles(url="https://www.tgb.cn/bbs/1/1"):
         print(f"请求失败: {e}")
         return []
 
-    soup = BeautifulSoup(response.text, 'html.parser')
+    records = parse_bbs_list(response.text, source_url=url, source_page=_source_page_from_url(url))
+    return [record.to_legacy_article() for record in records]
 
-    # 选择 class 为 "overhide mw300" 的 a 标签
-    articles = soup.select('a.overhide.mw300')
 
-    result = []
-    for article in articles:
-        href = article.get('href', '')
-        title = article.get('title', '') or article.get_text(strip=True)
-
-        # 构建完整URL
-        if href and not href.startswith('http'):
-            # 如果 href 以 a/ 或 /a/ 开头，直接拼接到 BASE_URL
-            if href.startswith('a/') or href.startswith('/a/'):
-                full_url = urljoin(BASE_URL, href)
-            else:
-                full_url = f"{BASE_URL}/bbs/{href}"
-        else:
-            full_url = href
-
-        result.append({
-            "title": title,
-            "url": full_url,
-            "href": href
-        })
-
-    return result
+def _source_page_from_url(url):
+    match = re.search(r"/bbs/(\d+)/", url)
+    return int(match.group(1)) if match else 0
 
 
 def save_to_json(data):
@@ -114,71 +98,29 @@ def get_article_content(url, headers):
 
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # 1. 获取文章标题
-    # 参考 p.txt: <div class="article-tittle" id="stockTitle">
-    title_elem = soup.select_one('#stockTitle')
-    if not title_elem:
-        title_elem = soup.select_one('.article-tittle')
-    
-    title = title_elem.get_text(strip=True) if title_elem else "无标题"
+    article_detail = parse_article_detail(response.text, url=url)
+    title = article_detail.title or "无标题"
 
     contents = []
 
-    # 2. 获取主帖内容
-    # 参考 p.txt: <div class="article-text p_coten" id="first" style="">
-    main_content_elem = soup.select_one('#first')
-    if not main_content_elem:
-        main_content_elem = soup.select_one('.article-text.p_coten')
-
-    if main_content_elem:
-        # 主帖内容
+    if article_detail.main_html:
         main_content = {
             "type": "main",
-            "text": main_content_elem.get_text(strip=True),
-            "html": str(main_content_elem),
-            "images": []
+            "text": article_detail.main_text,
+            "html": article_detail.main_html,
+            "images": article_detail.image_urls,
         }
-        # 获取主帖中的图片
-        for img in main_content_elem.select('img'):
-            # 优先取 data-original，其次取 src
-            img_src = img.get('data-original') or img.get('src')
-            if img_src and not img_src.endswith('.gif'):  # 排除表情gif
-                main_content["images"].append(img_src)
         contents.append(main_content)
 
-    # 3. 获取楼主的跟帖内容
-    # 参考 p.txt: 楼主回复在 <div class="comment-data ..."> 中
-    comment_blocks = soup.select('.comment-data')
-    for block in comment_blocks:
-        # 检查是否是楼主的跟帖
-        # 楼主标识在 <div class="comment-data-user"> 下的 span 中，内容为 "楼主"
-        user_info = block.select_one('.comment-data-user')
-        if not user_info:
+    for comment in parse_comments(response.text, article_slug=article_detail.slug, page_no=1):
+        if not comment.is_author:
             continue
-            
-        is_author = False
-        for span in user_info.select('span'):
-            if span.get_text(strip=True) == '楼主':
-                is_author = True
-                break
-        
-        if is_author:
-            # 内容在 <div class="comment-data-text" ...>
-            text_elem = block.select_one('.comment-data-text')
-            if text_elem:
-                reply_content = {
-                    "type": "reply",
-                    "text": text_elem.get_text(strip=True),
-                    "html": str(text_elem),
-                    "images": []
-                }
-                # 获取跟帖中的图片
-                for img in text_elem.select('img'):
-                    # 优先取 data-original，其次取 src
-                    img_src = img.get('data-original') or img.get('src')
-                    if img_src and not img_src.endswith('.gif'):
-                        reply_content["images"].append(img_src)
-                contents.append(reply_content)
+        contents.append({
+            "type": "reply",
+            "text": comment.text,
+            "html": comment.html,
+            "images": comment.image_urls,
+        })
 
     return {
         "title": title,

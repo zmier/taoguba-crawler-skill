@@ -60,6 +60,14 @@ python -m venv .venv
 
 ## 使用
 
+TASK06 sample 小闭环：
+
+```bash
+make crawl-sample
+```
+
+该命令只抓少量列表页、少量详情页和评论第一页，写入 `data/tgb-sample.sqlite`，用于验证小样本闭环；它不是 full 全量抓取。
+
 主进程：
 
 ```bash
@@ -80,6 +88,7 @@ python main.py testsend-live
 
 ## 输出
 
+- `data/tgb-sample.sqlite`: TASK06 sample 小闭环数据库
 - `output/`: 爬虫生成的 JSON、HTML，以及最终发送给渠道的 Markdown
 - `output/latest_report.md`: 最近一次发送用的 Markdown
 - `output/report-YYYYMMDD-HHMMSS.md`: 按时间归档的发送内容
