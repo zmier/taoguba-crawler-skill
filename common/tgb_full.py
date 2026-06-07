@@ -11,6 +11,7 @@ from urllib.parse import urldefrag
 from common.tgb_article import parse_article_detail
 from common.tgb_backfill import plan_comment_pages
 from common.tgb_comment import build_comment_page_url, parse_comments
+from common.tgb_guard import AntiBotBlocked, require_normal_page
 from common.tgb_index import build_bbs_page_url, parse_bbs_list
 from common.tgb_resume import claim_next, enqueue, mark_done, mark_failed
 from common.tgb_storage import (
@@ -107,8 +108,10 @@ def run_full_trial(config: FullRunConfig, fetch_html: FetchHtml) -> dict[str, ob
     try:
         summary["list_page_tasks_enqueued"] = enqueue_full_trial_plan(conn, config)
         _process_list_pages(conn, config, fetch_html, summary)
-        _process_article_pages(conn, config, fetch_html, summary)
-        _process_comment_pages(conn, config, fetch_html, summary)
+        if summary["stop_reason"] != "anti_bot_blocked":
+            _process_article_pages(conn, config, fetch_html, summary)
+        if summary["stop_reason"] != "anti_bot_blocked":
+            _process_comment_pages(conn, config, fetch_html, summary)
         summary["queue_done"] = conn.execute(
             "select count(*) from crawl_queue where status = 'done'"
         ).fetchone()[0]
@@ -117,10 +120,35 @@ def run_full_trial(config: FullRunConfig, fetch_html: FetchHtml) -> dict[str, ob
             0,
             (config.start_page or config.total_pages) - int(summary["list_pages_done"]) - config.end_page + 1,
         )
-        summary["stop_reason"] = "trial_limits_reached"
+        if not summary["stop_reason"]:
+            summary["stop_reason"] = "trial_limits_reached"
         return build_full_run_report(summary)
     finally:
         conn.close()
+
+
+def run_full_batch(config: FullRunConfig, fetch_html: FetchHtml) -> dict[str, object]:
+    approved_config = FullRunConfig(
+        db_path=config.db_path,
+        total_pages=config.total_pages,
+        start_page=config.start_page,
+        end_page=config.end_page,
+        flag=config.flag,
+        max_list_pages_per_run=config.max_list_pages_per_run,
+        max_articles_per_page=config.max_articles_per_page,
+        max_comment_pages_per_article=config.max_comment_pages_per_article,
+        request_interval_seconds=config.request_interval_seconds,
+        max_attempts=config.max_attempts,
+        backoff_seconds=config.backoff_seconds,
+        production_full=True,
+        manual_approval=config.manual_approval,
+    )
+    report = run_full_trial(approved_config, fetch_html)
+    report["mode"] = "full_batch"
+    report["full_run"] = True
+    report["full_run_gate"] = "manual_approval_granted"
+    report["manual_approval"] = True
+    return report
 
 
 def build_full_run_report(summary: dict[str, object]) -> dict[str, object]:
@@ -142,6 +170,7 @@ def _process_list_pages(
         queue_url = task["url"]
         try:
             html = fetch_html(queue_url)
+            require_normal_page(html, queue_url, expected="bbs_list")
             page_no = _page_no_from_bbs_url(queue_url)
             records = parse_bbs_list(html, source_url=queue_url, source_page=page_no)
             upsert_index_records(conn, records)
@@ -154,6 +183,9 @@ def _process_list_pages(
             mark_done(conn, queue_url)
         except Exception as exc:
             mark_failed(conn, queue_url, str(exc), config.max_attempts, config.backoff_seconds)
+            if isinstance(exc, AntiBotBlocked):
+                summary["stop_reason"] = "anti_bot_blocked"
+                return
         _sleep(config.request_interval_seconds)
 
 
@@ -170,6 +202,7 @@ def _process_article_pages(
         queue_url = task["url"]
         try:
             html = fetch_html(queue_url)
+            require_normal_page(html, queue_url, expected="article")
             detail = parse_article_detail(html, url=queue_url)
             if not detail.slug:
                 raise ValueError(f"无法从 URL 解析帖子 slug: {queue_url}")
@@ -182,6 +215,9 @@ def _process_article_pages(
             mark_done(conn, queue_url)
         except Exception as exc:
             mark_failed(conn, queue_url, str(exc), config.max_attempts, config.backoff_seconds)
+            if isinstance(exc, AntiBotBlocked):
+                summary["stop_reason"] = "anti_bot_blocked"
+                return
         _sleep(config.request_interval_seconds)
 
 
@@ -200,6 +236,7 @@ def _process_comment_pages(
         slug, page_no = _comment_info_from_url(queue_url)
         try:
             html = fetch_html(fetch_url)
+            require_normal_page(html, fetch_url, expected="comment_page")
             comments = parse_comments(html, article_slug=slug, page_no=page_no)
             upsert_comments(conn, comments)
             upsert_article_page(conn, slug, page_no, fetch_url, html)
@@ -208,6 +245,9 @@ def _process_comment_pages(
             mark_done(conn, queue_url)
         except Exception as exc:
             mark_failed(conn, queue_url, str(exc), config.max_attempts, config.backoff_seconds)
+            if isinstance(exc, AntiBotBlocked):
+                summary["stop_reason"] = "anti_bot_blocked"
+                return
         _sleep(config.request_interval_seconds)
 
 

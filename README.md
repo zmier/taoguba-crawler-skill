@@ -92,6 +92,10 @@ make crawl-full-trial
 
 该命令使用 list/article/comment_page 队列做小范围 full 试运行；它仍然带有 `manual_approval_required` 闸门，不是 TASK10 长期 full。
 
+TASK11 反爬熔断：
+
+当前已接入错误页检测。若返回 `错误页面_淘股吧`、访问太频繁或页面结构异常，batch 会熔断停止，不会把错误页当作详情成功入库。
+
 主进程：
 
 ```bash

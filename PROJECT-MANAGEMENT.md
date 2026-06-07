@@ -66,6 +66,7 @@ tgb/
     TASK08-full-preflight/
     TASK09-full-trial/
     TASK10-full-production/
+    TASK11-anti-bot-guard/
   data/
     tgb.sqlite
   output/
@@ -120,6 +121,7 @@ tasks/TASKxx-name/
 | TASK08 | full 运行前审计与参数定稿 | full 参数、队列规划、运行报告、人工闸门 | TASK07 | 不建议提前并行 |
 | TASK09 | 受控 full 试运行 | 小范围真实试跑、恢复能力与质量报告 | TASK08 | 不建议提前并行 |
 | TASK10 | 长期 full/backfill 正式运行 | 按批准参数长期倒序全量运行 | TASK09 + 用户确认 | 不可自动进入 |
+| TASK11 | 反爬检测与熔断 | 错误页识别、blocked 熔断、保守限速 | TASK10 运行反馈 | 已补安全机制 |
 
 ### 4.1.1 当前进度
 
@@ -134,7 +136,8 @@ tasks/TASKxx-name/
 | TASK07 | backfill sample 完成，full 未启动 | `common/tgb_backfill.py`、`scripts/tgb_backfill_sample.py`、backfill e2e/UAT、`make crawl-backfill-sample` |
 | TASK08 | 已完成 | `FullRunConfig`、full 参数校验、队列规划、运行报告闸门 |
 | TASK09 | 已完成 | `common/tgb_full.py`、`scripts/tgb_full_trial.py`、`make crawl-full-trial`、full trial e2e/UAT |
-| TASK10 | 未开始 | 等待 TASK09 审核和用户手动确认 |
+| TASK10 | 第一批已尝试，因疑似风控暂停 | `scripts/tgb_full_batch.py`、`make crawl-full-batch`、需等待访问恢复 |
+| TASK11 | MVP 完成 | `common/tgb_guard.py`、错误页熔断、保守限速策略、guard 单测/e2e |
 
 ### 4.2 依赖关系
 
@@ -473,6 +476,7 @@ make crawl-full
 ## 9. 风险与约束
 
 - 淘股吧登录态 Cookie 会过期，需要定期从浏览器 profile 刷新。
+- 若返回 `错误页面_淘股吧` 或浏览器也无法访问帖子，应立即暂停抓取并冷却。
 - 全量历史页数很大，必须限速和断点续爬。
 - 页面结构可能变化，解析器必须由 fixture 测试保护。
 - 不应在 git 中提交 `.env`、Cookie、API Key、数据库大文件和输出产物。
@@ -492,7 +496,7 @@ make crawl-full
 
 推荐下一步：
 
-1. 审核 TASK09 full trial 输出。
-2. 确认 TASK10 长期运行参数：页码范围、限速、评论页上限、失败重试审计。
-3. 做或复核中断恢复演练。
-4. 用户手动确认前，不启动 TASK10 长期 full 全量抓取。
+1. 等待站点访问恢复，先用浏览器人工确认帖子可打开。
+2. 使用 TASK11 保守参数恢复小批量抓取。
+3. 复核 TASK10 第一批中被错误页污染的数据，必要时清理或重跑。
+4. 未确认访问恢复前，不继续 TASK10 live 抓取。

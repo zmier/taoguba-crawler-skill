@@ -443,3 +443,155 @@
 
 ### Reflection
 - TASK08/09 已完成；TASK10 才是长期 full production，仍需用户手动确认。
+
+## 2026-05-27 14:02 - TASK10 第一批人工确认启动
+
+### Observation
+- 用户明确确认启动 TASK10，并要求先按保守参数跑第一批。
+- TASK09 full trial 已通过，具备 list_page、article、comment_page 三类队列和人工闸门。
+- 当前还没有单独的 TASK10 production batch 命令，需要避免误用 `full_trial` 摘要。
+
+### Plan
+- 增加 TASK10 production batch 入口，要求显式传入 `--manual-approval`。
+- 第一批采用保守参数：倒序最后 1 页、每页最多 70 篇、每篇最多 3 页评论、间隔 1 秒。
+- 输出 `mode=full_batch`、`full_run=true`、`manual_approval=true`。
+- 跑完后汇总列表页、详情、评论页、失败数。
+
+### Action
+- 准备新增 production batch CLI 并启动第一批。
+
+### Result
+- 待操作完成后回填。
+
+### Reflection
+- 第一批是受控 production batch，不是无限期后台全站运行。
+
+## 2026-05-27 14:18 - TASK11 反爬检测与熔断 Red 准备
+
+### Observation
+- TASK10 第一批出现异常：帖子详情请求返回 200，但 HTML 是“错误页面_淘股吧”，导致空详情被错误标记为 done。
+- 用户浏览器也无法访问帖子，疑似触发站点风控/临时限制。
+- 当前必须暂停 live 抓取，先补反爬检测、错误页熔断和保守限速策略。
+
+### Plan
+- 新增 TASK11 文档，明确保护目标和禁止继续请求的条件。
+- 写 Red 测试：错误页应被识别为 blocked；full batch 遇到 blocked 应停止，不入库详情、不标记 done。
+- 实现 `common.tgb_guard`，提供页面分类、反爬异常、保守限速配置。
+- 修改 full runner，在列表/详情/评论页 fetch 后立即校验页面。
+- 更新项目管理文档和 README。
+
+### Action
+- 准备新增 TASK11 测试与文档骨架。
+
+### Result
+- Red：新增 `tests.unit.test_guard` 和 `tests.e2e.test_full_guard` 后，因 `common.tgb_guard` 不存在、full runner 不熔断而失败，符合预期。
+- Green：新增 `common/tgb_guard.py` 并在 `common/tgb_full.py` 接入 `require_normal_page()` 后，guard 相关 9 个测试通过。
+- 修正误判：列表 fixture 中包含“验证码”文本片段，已避免把正常列表页误判为 blocked。
+- 已新增 `tasks/TASK11-anti-bot-guard/TASK11-说明.md`。
+- 已更新 `PROJECT-MANAGEMENT.md` 和 `README.md`。
+
+### Reflection
+- TASK11 MVP 已完成。当前不继续 live 抓取，等待站点访问恢复后再用保守参数重启小批次。
+
+## 2026-05-28 09:00 - TASK10 恢复后保守 smoke
+
+### Observation
+- 用户反馈浏览器已可正常访问帖子。
+- 需要先确认站点访问恢复，再用 TASK11 保守参数小批量恢复。
+
+### Plan
+- 先请求一篇已知老帖做健康探针，使用 guard 判断是否正常页面。
+- 若正常，运行单独数据库 `data/tgb-full-recovery-smoke.sqlite`，参数为最后 1 页、最多 3 篇、每篇 1 页评论、10 秒间隔。
+- 汇总空详情、评论、失败和数据库大小。
+
+### Action
+- 已执行健康探针：`https://www.tgb.cn/a/1yktHE16WgM`。
+- 已执行保守 smoke：`scripts/tgb_full_batch.py --manual-approval --db data/tgb-full-recovery-smoke.sqlite --max-list-pages 1 --max-articles-per-page 3 --max-comment-pages 1 --interval 10.0`。
+
+### Result
+- 健康探针正常：guard 为 `NORMAL`，标题为“世界因你而精彩”，正文长度 335，评论总数 137，第一页评论 49。
+- 保守 smoke 成功：`full_run=true`、`manual_approval_granted`、`list_pages_done=1`、`article_details_fetched=3`、`comment_pages_fetched=3`、`comments_seen=72`、`failures=0`。
+- 数据库 `data/tgb-full-recovery-smoke.sqlite`：3 篇详情、72 条评论、0 条失败、0 个空详情，大小 128K。
+
+### Reflection
+- 访问已恢复，TASK11 熔断未触发。正式恢复前建议先清理/隔离此前 `data/tgb-full.sqlite` 中被错误页污染的空详情，再继续保守批次。
+
+## 2026-05-28 09:18 - TASK13 批次台账与保守 full 重跑
+
+### Observation
+- 用户确认删除 `data/tgb-full.sqlite`，直接从干净库重跑。
+- TASK11 熔断已完成，恢复 smoke 已验证可访问。
+- 当前应使用保守参数，避免再次触发风控。
+
+### Plan
+- 删除旧 `data/tgb-full.sqlite` 及 WAL/SHM 文件。
+- 创建 TASK13 批次台账目录。
+- 使用保守参数运行第一批：最后 1 页、最多 3 篇、每篇 1 页评论、10 秒间隔。
+- 跑完后统计 articles、comments、article_pages、failures、空详情、数据库大小，并写入台账。
+
+### Action
+- 已删除旧 `data/tgb-full.sqlite`。
+- 准备启动保守 full batch。
+
+### Result
+- TASK13 Batch 001 完成。
+- 运行参数：`--max-list-pages 1 --max-articles-per-page 3 --max-comment-pages 1 --interval 10.0`。
+- 输出：`data/tgb-full.sqlite`。
+- 批次结果：`total_pages=92772`，`planned_pages=[92772]`，`list_pages_done=1`，`index_records_seen=32`，`article_details_fetched=3`，`comment_pages_fetched=3`，`comments_seen=72`，`failures=0`。
+- 数据库复核：`articles=32`，`comments=72`，`article_pages=3`，`queue_done=7`，`empty_detail_articles=0`，数据库大小 `128K`。
+- 已新增 `tasks/TASK13-batch-ledger/TASK13-说明.md` 和 `tasks/TASK13-batch-ledger/outputs/batch-ledger.md`。
+
+### Reflection
+- Batch 001 通过。下一批可继续保持同参数，连续 3-5 批稳定后再考虑把 `max_articles_per_page` 从 3 提高到 5。
+
+## 2026-05-28 09:32 - TASK13 Batch 002-005 连续保守批次
+
+### Observation
+- 用户确认继续执行稳态保守批次。
+- Batch 001 已通过，当前参数稳定：每批 1 页、3 篇、1 页评论、10 秒间隔。
+
+### Plan
+- 继续同参数执行 Batch 002-005。
+- 页码从上一批 92772 继续倒序：92771、92770、92769、92768。
+- 每批使用同一个 `data/tgb-full.sqlite`，累积入库。
+- 跑完后检查 failures、empty_detail_articles、comments、数据库大小，并更新台账。
+
+### Action
+- 准备启动连续批次。
+
+### Result
+- Batch 002-005 已完成，参数保持：每批 1 页、最多 3 篇、每篇 1 页评论、10 秒间隔。
+- Batch 002：page 92771，列表 70 条，详情 3 篇，评论页 3 页，评论 13 条，失败 0。
+- Batch 003：page 92770，列表 70 条，详情 3 篇，评论页 3 页，评论 29 条，失败 0。
+- Batch 004：page 92769，列表 70 条，详情 3 篇，评论页 3 页，评论 12 条，失败 0。
+- Batch 005：page 92768，列表 70 条，详情 3 篇，评论页 3 页，评论 1 条，失败 0。
+- 当前累计数据库复核：`articles=312`，`detail_count=15`，`comments=127`，`article_pages=15`，`failures=0`，`queue_done=35`，`empty_detail_articles=0`，数据库大小 `576K`。
+- 已更新 `tasks/TASK13-batch-ledger/outputs/batch-ledger.md`。
+
+### Reflection
+- 连续 5 个保守批次稳定通过。下一步可以继续同参数再跑几批，或小幅把 `max_articles_per_page` 从 3 提高到 5，但不建议同时提高评论页和列表页数量。
+
+## 2026-05-28 09:50 - TASK13 Batch 006 小幅放大
+
+### Observation
+- 用户选择小幅放大方案。
+- Batch 001-005 均稳定，`failures=0`、`empty_detail_articles=0`。
+
+### Plan
+- 只把 `max_articles_per_page` 从 3 提高到 5。
+- 其他参数保持：每批 1 页、每篇 1 页评论、10 秒间隔。
+- 先跑 Batch 006，页码 92767。
+- 跑完复核 failures、empty_detail_articles、comments、数据库大小。
+
+### Action
+- 准备启动 Batch 006。
+
+### Result
+- Batch 006 完成，页码 92767。
+- 参数：每批 1 页、最多 5 篇、每篇 1 页评论、10 秒间隔。
+- 批次结果：列表 70 条，详情 5 篇，评论页 5 页，评论 8 条，失败 0。
+- 数据库复核：`articles=382`，`detail_count=20`，`comments=135`，`article_pages=20`，`queue_done=46`，`failures=0`，`empty_detail_articles=0`，数据库大小 `640K`。
+- 已更新 `tasks/TASK13-batch-ledger/outputs/batch-ledger.md`。
+
+### Reflection
+- Batch 006 稳定通过。建议继续用同样放大参数跑 2-3 批，再考虑是否提高评论页数量。
