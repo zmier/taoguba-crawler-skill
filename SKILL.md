@@ -41,6 +41,39 @@ python crawler_home.py
 - Same content extraction and HTML generation as BBS crawler
 - Outputs: `output/home_YYYY-MM-DD.json` and `output/home_YYYY-MM-DD_HHMMSS.html`
 
+### 3. User Topics Crawler (`tgb_user_topics.py`)
+
+Crawl one user's latest-topic archive, such as:
+
+```text
+https://www.tgb.cn/user/blog/moreTopic?userID=252069
+```
+
+Recommended first pass:
+
+```bash
+python scripts/tgb_user_topics.py --user-id 252069 --all
+```
+
+Optional detail pass:
+
+```bash
+python scripts/tgb_user_topics.py --user-id 252069 --max-pages 2 --fetch-details --max-articles 5 --comment-pages 1
+```
+
+Resume detail backfill from an existing index database:
+
+```bash
+python scripts/tgb_user_topics.py --user-id 252069 --details-only --max-articles 200 --comment-pages 1
+```
+
+- Extracts topic index records from `user/blog/moreTopic?userID={id}&pageNo={n}`
+- Detects total pages from the page's `pageNum`
+- Stores data in `data/tgb-user-{user_id}.sqlite`
+- Reuses the existing article-detail and comment parsers for `/a/{slug}`
+- For large archives, fetch index first and then fetch details in small batches to reduce anti-bot risk; index completion alone is not full-text completion
+- `--details-only` resumes missing details from SQLite rows with empty `fetched_at`
+
 ## Common Workflow
 
 To run both crawlers:
@@ -63,12 +96,14 @@ The crawler scripts are bundled in `scripts/`:
 
 - **`scripts/crawler_bbs.py`** - BBS forum crawler (HTML scraping)
 - **`scripts/crawler_home.py`** - Homepage crawler (JSON API)
+- **`scripts/tgb_user_topics.py`** - User latest-topic archive crawler
 
 To run the bundled scripts directly:
 
 ```bash
 python scripts/crawler_bbs.py
 python scripts/crawler_home.py
+python scripts/tgb_user_topics.py --user-id 252069 --all
 ```
 
 ## Troubleshooting

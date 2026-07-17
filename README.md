@@ -18,6 +18,7 @@
 - [scripts/taoguba_report.py](D:/dev/github/taoguba-crawler-skill/scripts/taoguba_report.py): 报告生成与通知发送
 - [scripts/crawler_bbs.py](D:/dev/github/taoguba-crawler-skill/scripts/crawler_bbs.py): 股吧论坛抓取
 - [scripts/crawler_home.py](D:/dev/github/taoguba-crawler-skill/scripts/crawler_home.py): 首页推荐抓取
+- [scripts/tgb_user_topics.py](scripts/tgb_user_topics.py): 指定用户最新主帖列表抓取，例如 `柏拉爱空 userID=252069`
 - [deploy.py](D:/dev/github/taoguba-crawler-skill/deploy.py): 上传部署脚本
 - [ecosystem.config.js](D:/dev/github/taoguba-crawler-skill/ecosystem.config.js): PM2 配置
 
@@ -96,6 +97,31 @@ TASK11 反爬熔断：
 
 当前已接入错误页检测。若返回 `错误页面_淘股吧`、访问太频繁或页面结构异常，batch 会熔断停止，不会把错误页当作详情成功入库。
 
+指定用户最新主帖：
+
+```bash
+# 只抓指定用户当前全部主帖索引，推荐先跑这个
+python scripts/tgb_user_topics.py --user-id 252069 --all
+
+# 抓前 2 页索引，并额外抓 5 篇详情和评论第一页
+python scripts/tgb_user_topics.py --user-id 252069 --max-pages 2 --fetch-details --max-articles 5 --comment-pages 1
+
+# 不重扫列表页，直接从已有数据库续抓缺失正文
+python scripts/tgb_user_topics.py --user-id 252069 --details-only --max-articles 200 --comment-pages 1
+
+# 使用 Makefile，USER_ID 必填
+make crawl-user-topics USER_ID=252069
+make crawl-user-topic-details USER_ID=252069 MAX_ARTICLES=200
+```
+
+说明：
+
+- URL 模板为 `https://www.tgb.cn/user/blog/moreTopic?userID={user_id}&pageNo={page_no}`。
+- 脚本会从页面脚本里的 `pageNum` 自动识别末页。
+- `--all` 适合建立全集索引；注意“索引全集”不等于“正文全集”，正文/评论需要用 `--fetch-details --max-articles N` 或 `--details-only` 分批补齐，避免触发风控。
+- `--details-only` 会直接从已有 SQLite 里找 `fetched_at = ''` 的帖子续抓正文和评论，不重扫列表页。
+- 默认数据库为 `data/tgb-user-{user_id}.sqlite`。
+
 主进程：
 
 ```bash
@@ -120,6 +146,7 @@ python main.py testsend-live
 - `data/tgb-incremental.sqlite`: TASK06 incremental 增量数据库
 - `data/tgb-backfill-sample.sqlite`: TASK07 backfill sample 数据库
 - `data/tgb-full-trial.sqlite`: TASK09 受控 full trial 数据库
+- `data/tgb-user-{user_id}.sqlite`: 指定用户 latest-topic 索引/详情数据库
 - `output/`: 爬虫生成的 JSON、HTML，以及最终发送给渠道的 Markdown
 - `output/latest_report.md`: 最近一次发送用的 Markdown
 - `output/report-YYYYMMDD-HHMMSS.md`: 按时间归档的发送内容

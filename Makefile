@@ -1,6 +1,6 @@
-PYTHON ?= ../../.venv/bin/python
+PYTHON ?= ../../../../.venv/bin/python
 
-.PHONY: test test-unit test-e2e test-uat crawl-sample crawl-incremental crawl-backfill-sample crawl-full-trial crawl-full-batch
+.PHONY: test test-unit test-e2e test-uat crawl-sample crawl-incremental crawl-backfill-sample crawl-full-trial crawl-full-batch crawl-user-topics
 
 test:
 	$(PYTHON) -m unittest discover tests
@@ -28,3 +28,9 @@ crawl-full-trial:
 
 crawl-full-batch:
 	$(PYTHON) scripts/tgb_full_batch.py --manual-approval --max-list-pages 1 --max-articles-per-page 70 --max-comment-pages 3 --interval 1.0
+
+crawl-user-topics:
+	$(PYTHON) scripts/tgb_user_topics.py --user-id $(USER_ID) --all --interval 1.0
+
+crawl-user-topic-details:
+	$(PYTHON) scripts/tgb_user_topics.py --user-id $(USER_ID) --details-only --max-articles $(MAX_ARTICLES) --comment-pages 1 --interval 1.0

@@ -595,3 +595,77 @@
 
 ### Reflection
 - Batch 006 稳定通过。建议继续用同样放大参数跑 2-3 批，再考虑是否提高评论页数量。
+
+## 2026-07-17 - 指定用户 moreTopic 主帖全集抓取
+
+### Observation
+- 用户需要抓取 `https://www.tgb.cn/user/blog/moreTopic?userID=252069`，用于长期阅读 `柏拉爱空` 的题材复盘。
+- 现有 `parse_bbs_list()` 能解析 `moreTopic` 页面中的主帖记录，但缺少指定用户分页调度入口。
+- 实测页面脚本包含 `pageNum = 37`，可自动识别全集页数。
+
+### Plan
+- 新增 `common/tgb_user_topics.py`：负责构造用户主帖分页 URL、解析分页、规划页码、入库索引、可选抓详情/评论。
+- 新增 `scripts/tgb_user_topics.py`：提供 CLI。
+- 新增 unit/e2e 测试保护分页规则和小闭环入库。
+- 更新 `README.md`、`SKILL.md`、`Makefile`。
+
+### Action
+- 新增命令：
+  - `python scripts/tgb_user_topics.py --user-id 252069 --all`
+  - `python scripts/tgb_user_topics.py --user-id 252069 --max-pages 2 --fetch-details --max-articles 5 --comment-pages 1`
+  - `make crawl-user-topics USER_ID=252069`
+- 修正 `Makefile` 默认 `PYTHON` 路径为 SMK 根目录 `.venv`。
+- 详情抓取队列改为：页码越新、列表位置越靠前，优先级越高。
+
+### Result
+- 已真实抓取 `柏拉爱空 userID=252069` 全量主帖索引到 `data/tgb-user-252069.sqlite`。
+- 全集索引结果：`total_pages=37`，`index_records_saved=3618`，`failures=0`。
+- 轻量详情验证：已抓取 3 篇详情、14 条评论，`failures=0`。
+- 最新优先级验证：最新详情从 `7月16日 猴市` 开始抓取。
+- 测试：
+  - `python -m unittest tests.unit.test_user_topics tests.e2e.test_user_topics_runner` 通过。
+  - `python -m unittest discover -s tests/unit -p 'test_*.py'` 通过，33 tests。
+  - `python -m unittest discover -s tests/e2e -p 'test_*.py'` 通过，6 tests。
+
+### Reflection
+- 当前建议先用 `--all` 建全集索引，再用 `--fetch-details --max-articles N` 小批量补正文和评论。
+- 该数据源适合接入 SMK 题材研究：作为“短线老师复盘/题材命名/情绪体感”的人工高质量文本层。
+
+## 2026-07-17 - 指定用户 moreTopic 正文详情全量补库
+
+### Observation
+- 用户指出：只抓完 `moreTopic` 列表索引还不够，后续研究需要把帖子正文也全部拉下来入库。
+- 前一阶段 `data/tgb-user-252069.sqlite` 已有 `3618` 条主帖索引，但正文详情只做了小批量验证，并非全量详情库。
+- 需要区分两个口径：`articles` 是列表索引，`details` 才是正文详情是否已抓取。
+
+### Plan
+- 新增 `--details-only` 模式：不重扫列表页，直接从已有 SQLite 中找 `fetched_at = ''` 的帖子续抓正文详情和首屏评论。
+- 批量补齐 `柏拉爱空 userID=252069` 的全部主帖正文。
+- 补库完成后复核 `articles/details/missing_details/comments/failures`，并跑 unit/e2e 回归。
+
+### Action
+- 增加 `enqueue_missing_article_details()`，只为缺失详情且队列中不存在待抓任务的帖子入队，避免每次 details-only 重新扫描大量 pending。
+- 新增命令示例：
+  - `python scripts/tgb_user_topics.py --user-id 252069 --details-only --max-articles 200 --comment-pages 1`
+  - `make crawl-user-topic-details USER_ID=252069 MAX_ARTICLES=200`
+- 分批执行 details-only，保持请求间隔，补齐剩余正文。
+
+### Result
+- `data/tgb-user-252069.sqlite` 最终复核：
+  - `articles=3618`
+  - `details=3618`
+  - `missing_details=0`
+  - `comments=6524`
+  - `pending_articles=0`
+  - `running_articles=0`
+  - `done_articles=3618`
+  - `failures=0`
+- 最后一批输出：`article_details_fetched=903`，`comment_pages_fetched=903`，`queue_done=3618`，`failures=0`。
+- 回归测试：
+  - `python -m unittest tests.unit.test_user_topics tests.e2e.test_user_topics_runner`：6 tests OK。
+  - `python -m unittest discover tests/unit`：34 tests OK。
+  - `python -m unittest discover tests/e2e`：7 tests OK。
+
+### Reflection
+- 以后说“指定用户帖子全集入库”，必须同时检查 `articles == details` 且 `missing_details = 0`；只完成 `articles` 只能称为“列表索引全集”。
+- 对于这类长期复盘老师数据，推荐流程是：先 `--all` 建索引，再用 `--details-only` 分批补正文，必要时再追加更多评论分页。
