@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import unescape
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -65,6 +66,7 @@ def parse_bbs_pagination(html: str, source_url: str = "") -> BbsPagination:
 def parse_bbs_list(html: str, source_url: str = "", source_page: int = 0) -> list[BbsIndexRecord]:
     soup = BeautifulSoup(html, "html.parser")
     records: list[BbsIndexRecord] = []
+    author_topics = urlsplit(source_url).path == "/user/blog/moreTopic"
 
     for title_link in soup.select('a[href^="a/"], a[href^="/a/"]'):
         href = title_link.get("href", "").strip()
@@ -78,7 +80,8 @@ def parse_bbs_list(html: str, source_url: str = "", source_page: int = 0) -> lis
         if _looks_like_sidebar_or_reward_row(row):
             continue
 
-        title = _clean_title(title_link.get("title") or title_link.get_text(" ", strip=True))
+        title_value = title_link.get("title") or title_link.get_text(" ", strip=True)
+        title = _clean_title(unescape(title_value) if author_topics else title_value)
         if not title:
             continue
 
@@ -92,6 +95,14 @@ def parse_bbs_list(html: str, source_url: str = "", source_page: int = 0) -> lis
         times = re.findall(r"\d{2}-\d{2}\s+\d{2}:\d{2}", row.get_text(" ", strip=True))
         last_reply_time = times[0] if times else ""
         post_time = times[-1] if times else ""
+        if author_topics:
+            cells = [td.get_text(" ", strip=True) for td in row.find_all("td", recursive=False)]
+            dates = [cell for cell in cells if re.fullmatch(r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?", cell)]
+            clocks = [cell for cell in cells if re.fullmatch(r"\d{2}-\d{2} \d{2}:\d{2}", cell)]
+            last_reply_time = clocks[0] if clocks else ""
+            post_time = dates[-1] if dates else ""
+            if not post_time and len(clocks) >= 2:
+                post_time = clocks[-1]
 
         records.append(
             BbsIndexRecord(

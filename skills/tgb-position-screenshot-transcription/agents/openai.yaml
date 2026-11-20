@@ -1,0 +1,4 @@
+interface:
+  display_name: "TGB Position Screenshot Transcription"
+  short_description: "Extract source-faithful holdings from TGB screenshots"
+  default_prompt: "Use $tgb-position-screenshot-transcription to transcribe every visible field from these TGB broker screenshots."

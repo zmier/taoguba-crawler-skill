@@ -49,7 +49,7 @@ def parse_comments(html: str, article_slug: str = "", page_no: int = 1) -> list[
                 is_author=_is_author(block),
                 floor_label=_floor_label(block),
                 created_at=_created_at(block),
-                text=_text(text_node),
+                text=comment_text_with_face_markers(text_node),
                 html=str(text_node),
                 image_urls=_image_urls(text_node),
             )
@@ -74,6 +74,27 @@ def _text(node) -> str:
     if node is None:
         return ""
     return re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip()
+
+
+def comment_text_with_face_markers(node) -> str:
+    """Preserve legacy TGB face-only author replies as stable source markers."""
+
+    if node is None:
+        return ""
+    clone = BeautifulSoup(str(node), "html.parser")
+    for image in clone.select('img[src*="/images/face/"]'):
+        match = re.search(r"/face/(\d+)\.png", image.get("src", ""), re.IGNORECASE)
+        image.replace_with(f"［表情:{match.group(1) if match else 'unknown'}］")
+    return _text(clone)
+
+
+def recover_comment_text(text: str, html: str) -> str:
+    """Reparse an already safe target-author comment fragment when faces were lost."""
+
+    if not html or "/images/face/" not in html:
+        return text
+    parsed = comment_text_with_face_markers(BeautifulSoup(html, "html.parser"))
+    return parsed or text
 
 
 def _is_author(block) -> bool:

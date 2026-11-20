@@ -8,6 +8,17 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 
 class TestBbsIndexParser(unittest.TestCase):
+    def test_author_directory_separates_publication_date_from_last_reply(self):
+        html = """<table><tr>
+        <td><a href="a/demo" title="实盘&amp;nbsp;第32天">实盘 第32天</a></td>
+        <td><a href="blog/3519779">股长升</a></td><td>02-26 16:37</td>
+        <td>510 / 54601</td><td>2021-02-24</td></tr></table>"""
+        source = "https://www.tgb.cn/user/blog/moreTopic?userID=3519779"
+        row = parse_bbs_list(html, source_url=source)[0]
+        self.assertEqual((row.title, row.last_reply_time, row.post_time),
+                         ("实盘 第32天", "02-26 16:37", "2021-02-24"))
+        self.assertEqual(parse_bbs_list(html.replace("2021-02-24", ""), source)[0].post_time, "")
+
     def test_parse_bbs_list_extracts_structured_index_records(self):
         # GIVEN：一份淘股吧论坛列表页 HTML fixture
         html = (FIXTURES / "bbs_list_page_1.html").read_text(encoding="utf-8")

@@ -1,6 +1,6 @@
 ---
 name: taoguba-crawler
-description: This skill should be used when the user asks to "crawl taoguba", "crawl tgb", "scrape taoguba articles", "run the crawler", "crawl bbs", "crawl home page", "generate article HTML", or needs to run the Taoguba (tgb.cn) web crawlers.
+description: Archive athlete competition disclosures and broker screenshots, or crawl author posts. This skill should be used when the user asks to "crawl taoguba", "crawl tgb", "scrape taoguba articles", "run the crawler", "crawl bbs", "crawl home page", "generate article HTML", or needs to run the Taoguba (tgb.cn) web crawlers.
 version: 0.1.0
 allowed-tools: Bash, Read
 ---
@@ -73,6 +73,27 @@ python scripts/tgb_user_topics.py --user-id 252069 --details-only --max-articles
 - Reuses the existing article-detail and comment parsers for `/a/{slug}`
 - For large archives, fetch index first and then fetch details in small batches to reduce anti-bot risk; index completion alone is not full-text completion
 - `--details-only` resumes missing details from SQLite rows with empty `fetched_at`
+
+作者回帖目录在 100 字处可能截断，后续配图也可能缺少标记。回查目标作者的楼层或回复详情，再把原图纳入来源索引。本人回帖入口见 `scripts/tgb_user_replies.py --help`，发帖媒体用 `scripts/tgb_author_images.py --help`。
+
+完整选手档案应检查作者主帖、本人回帖和个人实盘比赛栏目。
+
+### 实盘比赛与逐日报单
+
+从 `/user/blog/myspmath?userID=<账号ID>` 进入各场战绩页，保存逐日持仓申报和收益明细，再从可见的“查看”入口向前、向后翻完报单相册。有些日期只有收益和图片。源数据写入作者案例目录。
+
+```bash
+python scripts/tgb_match_reports.py --user-id "$USER_ID" --output-dir "$MATCH_DIR"
+```
+
+`MATCH_DIR` 指向本次快照的案例目录。只查询赛事列表时加 `--stage index`。如果同日参加多场比赛，保留每场来源，按日对照持仓、资产和收益；报单申报与券商成交分别核实。字段、空相册、可见性和离线验收见[比赛采集规则](references/competition-reports.md)。
+
+### 券商截图转录
+
+比赛归档中的券商图走[持仓截图转录](skills/tgb-position-screenshot-transcription/SKILL.md)的比赛批次入口。用 `scripts/tgb_match_transcription.py` 从只读原图库产生按 SHA 复核的队列，并按赛事、归属日、提交时间保留每个出处。
+
+
+发帖图库中的原图通过 `scripts/tgb_transaction_slips.py` 进入逐图识别与审阅。识别需要 Pillow。网页比赛表需要 Node.js、Playwright 和 Chrome。
 
 ## Common Workflow
 

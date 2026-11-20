@@ -1,0 +1,4 @@
+interface:
+  display_name: "TGB Position History Inference"
+  short_description: "Infer bounded position history from verified TGB records"
+  default_prompt: "Use $tgb-position-history-inference to derive auditable position-history claims from verified TGB screenshot records."
